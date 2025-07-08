@@ -66,43 +66,47 @@ The router uses NetworkX shortest-path with these weights.
 
 ---
 
-## Optional Frontend
+## Web Frontend (Google Maps)
 
-You can rapidly prototype a Leaflet map:
+The Flask backend now serves a modern Google Maps UI at `/` (see `backend/templates/index.html`).
 
-```html
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+Features:
+* Light/dark theme toggle
+* “Use my location” and Places Autocomplete for start/destination inputs
+* Risk layer overlay drawn from `/riskmap`
+* Multi-route display with colour coding
 
-<div id="map" style="height: 100vh;"></div>
-<script>
-  const map = L.map('map').setView([12.97, 77.59], 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+No extra build step—just run the API (see Setup) and open `http://localhost:8000` in your browser.
 
-  async function fetchRisk() {
-    const res = await fetch('/riskmap');
-    const geo = await res.json();
-    L.geoJSON(geo, {
-      style: f => ({ color: '#f00', opacity: f.properties.risk_score })
-    }).addTo(map);
-  }
+---
 
-  map.on('click', async e => {
-    if (!window.start) {
-      window.start = e.latlng;
-      L.marker(e.latlng).addTo(map);
-    } else {
-      const url = `/route?start=${window.start.lat},${window.start.lng}&end=${e.latlng.lat},${e.latlng.lng}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      L.polyline(data.path, { color: 'blue' }).addTo(map);
-      window.start = null;
-    }
-  });
 
-  fetchRisk();
-</script>
+
+
+
+## Local Setup
+
+```bash
+# 1. Clone & enter project
+ git clone https://github.com/<your-username>/sheltr.git && cd sheltr
+
+# 2. Create virtual environment (Python 3.11+ recommended)
+ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+# 3. Install dependencies
+ pip install -r requirements.txt
+
+# 4. Provide a Google Maps JavaScript API key
+ echo "GMAPS_API_KEY=YOUR_KEY_HERE" > .env            # or set environment variable
+
+# 5. Run the app (Flask dev server)
+ python -m backend.app  # listens on http://127.0.0.1:8000/
+
+# 6. Open the browser
+ open http://localhost:8000    # or navigate manually
 ```
+
+On first run Sheltr downloads the OpenStreetMap network for your AOI (specified via env vars `SHELTR_NORTH/SOUTH/EAST/WEST`). Subsequent runs load the cached graph.
 
 ---
 
