@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sheltr – Safety-First Route</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <style>
+    
+    #map{height:100%}
+    
+    
+    
+  </style>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --text:#000000;
+      --panel-bg:rgba(255,255,255,0.9);
+      --btn-bg:#2196f3;
+      --btn-bg-hover:#1976d2;
+      --btn-text:#fff;
+    }
+    [data-theme="dark"]{
+      --bg:#121212;
+      --text:#ffffff;
+      --panel-bg:rgba(30,30,30,0.9);
+      --btn-bg:#424242;
+      --btn-bg-hover:#616161;
+      --btn-text:#fff;
+    }
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:'Poppins',sans-serif;transition:background 0.3s ease,color 0.3s ease}
+    #map{height:100%}
+    #control{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;padding:12px 16px;border-radius:12px;backdrop-filter:blur(6px);box-shadow:0 2px 8px rgba(0,0,0,0.25);display:flex;flex-wrap:nowrap;gap:8px;align-items:center;background:var(--panel-bg);}
+    button{background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-weight:600;transition:transform 0.1s ease,background 0.2s ease}
+    button:active{transform:scale(0.95)}
+    button:hover{background:var(--btn-bg-hover)}
+    .spinner{border:3px solid rgba(255,255,255,0.3);border-top:3px solid var(--btn-text);border-radius:50%;width:16px;height:16px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;}
+    @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+    #loc-btn{background:var(--btn-bg);}
+    input{margin-left:4px;padding:4px;border-radius:4px;border:1px solid #ccc;}
+  </style>
+</head>
+<body>
+  <div id="control" class="panel">
+    <label for="start-input">Start:</label>
+    <input id="start-input" placeholder="lat,lon" size="16" />
+    <button id="loc-btn" title="Use my location"><span class="material-symbols-outlined">explore</span></button>
+    <label for="dest-input">Dest:</label>
+    <input id="dest-input" placeholder="lat,lon" size="16" />
+    <button id="plot-btn" title="Plot route"><span class="material-symbols-outlined">alt_route</span></button>
+    <button id="theme-btn" title="Toggle theme">🌙</button>
+  </div>
+  <div id="map"></div>
+  <div id="map-overlay" style="display:none;justify-content:center;align-items:center;position:absolute;top:0;left:0;width:100%;height:100%;z-index:4;pointer-events:none;">
+    <span class="spinner" style="width:40px;height:40px;border-width:5px"></span>
+  </div>
+
+  <script>
+    // This value is injected from Flask
+    const GMAPS_API_KEY = "{{ api_key }}";
+    const apiBase = location.origin;
+    let map;
+    let startMarker=null,destMarker=null;
+    let routePolylines=[];
+// simple in-memory cache for geocode lookups per session
+const geocodeCache=new Map();
+let routeInfoWindow=null;
+
+// Dark theme Google Maps style
+const darkMapStyle=[
+  {"elementType":"geometry","stylers":[{"color":"#242f3e"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#242f3e"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#746855"}]},
+  {"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},
+  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#263c3f"}]},
+  {"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#6b9a76"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#38414e"}]},
+  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#212a37"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#9ca5b3"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#746855"}]},
+  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#1f2835"}]},
+  {"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#f3d19c"}]},
+  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#2f3948"}]},
+  {"featureType":"transit.station","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#17263c"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#515c6d"}]},
+  {"featureType":"water","elementType":"labels.text.stroke","stylers":[{"color":"#17263c"}]}
+];
+
+/* Theme toggle */
+const themeBtn = document.getElementById('theme-btn');
+let theme = localStorage.getItem('theme') || 'light';
+applyTheme(theme);
+
+themeBtn.onclick = ()=>{
+  theme = theme==='light'?'dark':'light';
+  localStorage.setItem('theme', theme);
+  applyTheme(theme);
+};
+
+function applyTheme(t){
+  document.body.setAttribute('data-theme', t);
+  themeBtn.textContent = t==='light'?'🌙':'☀️';
+  // switch Google Map style if map exists
+  if(typeof map!=='undefined' && map){
+    map.setOptions({styles: t==='dark'?darkMapStyle:null});
+  }
+}
+/* End theme toggle */
+
+    function initMap(){
+      map = new google.maps.Map(document.getElementById('map'), {center: {lat:20,lng:0}, zoom: 2});
+      loadRiskLayer();
+      applyTheme(theme);
+
+      const startInput=document.getElementById('start-input');
+  const destInput=document.getElementById('dest-input');
+  document.getElementById('plot-btn').onclick = plotRoute;
+  // trigger plot on Enter key ONLY for destination field
+  destInput.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){
+      e.preventDefault();
+      plotRoute();
+    }
+  });
+  // clear cached lat/lng when typing
+  ['input','change'].forEach(ev=>{
+    startInput.addEventListener(ev,()=>{delete startInput.dataset.lat; delete startInput.dataset.lng;});
+    destInput.addEventListener(ev,()=>{delete destInput.dataset.lat; delete destInput.dataset.lng;});
+  });
+  // attach Google Places Autocomplete for better accuracy
+  const acStart=new google.maps.places.Autocomplete(startInput,{fields:['geometry']});
+  const acDest=new google.maps.places.Autocomplete(destInput,{fields:['geometry']});
+  const setLL=(ac,input)=>{
+    const plc=ac.getPlace();
+    if(plc && plc.geometry){
+      const ll=plc.geometry.location;
+      input.dataset.lat=ll.lat();
+      input.dataset.lng=ll.lng();
+    }
+  };
+  acStart.addListener('place_changed',()=>setLL(acStart,startInput));
+  acDest.addListener('place_changed',()=>setLL(acDest,destInput));
+      const locBtn=document.getElementById('loc-btn'); if(locBtn) locBtn.onclick=()=>{
+  const original=locBtn.innerHTML;locBtn.disabled=true;locBtn.innerHTML='Loc <span class="spinner"></span>';
+  geoLocate(latlng=>{
+    if(startMarker) startMarker.setMap(null);
+    startMarker=new google.maps.Marker({position:latlng,map,icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:'green',fillOpacity:1,strokeWeight:0}});
+    map.setCenter(latlng);map.setZoom(15);
+    locBtn.disabled=false;locBtn.innerHTML=original;
+  });
+};
+      const destBtn=document.getElementById('dest-btn'); if(destBtn) destBtn.onclick = () => geoLocate(latlng => {
+          if(destMarker) destMarker.setMap(null);
+          destMarker = new google.maps.Marker({position:latlng,map,icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:'red',fillOpacity:1,strokeWeight:0}});
+          map.setCenter(latlng);
+          map.setZoom(15);
+          if(startMarker) routeBetween();
+      });
+
+      map.addListener('click',e=>{
+        if(!startMarker){
+          startMarker = new google.maps.Marker({position:e.latLng,map,icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:'green',fillOpacity:1,strokeWeight:0}});
+        }else{
+          if(destMarker) destMarker.setMap(null);
+          destMarker = new google.maps.Marker({position:e.latLng,map,icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:'red',fillOpacity:1,strokeWeight:0}});
+          routeBetween();
+        }
+      });
+    }
+
+    function geoLocate(cb){
+  if(!navigator.geolocation){alert('Geolocation not supported');return;}
+  const opts={enableHighAccuracy:true,timeout:7000,maximumAge:0};
+  let fallbackDone=false;
+  // First try a one-shot quick fix
+  navigator.geolocation.getCurrentPosition(pos=>{
+    if(fallbackDone) return; // watch may have already fired
+    cb({lat:pos.coords.latitude,lng:pos.coords.longitude});
+  },err=>{
+    console.warn('quick getCurrentPosition failed',err);
+  },opts);
+  // Parallel watch for better/faster update, stop at first reading
+  const id=navigator.geolocation.watchPosition(pos=>{
+    if(fallbackDone) return;
+    fallbackDone=true;
+    navigator.geolocation.clearWatch(id);
+    cb({lat:pos.coords.latitude,lng:pos.coords.longitude});
+  },err=>{
+    navigator.geolocation.clearWatch(id);
+    if(!fallbackDone) alert('Failed to get location: '+err.message);
+  },opts);
+}
+
+    async function geocode(str){
+  if(geocodeCache.has(str)) return geocodeCache.get(str);
+  const url=`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(str)}`;
+  const res=await fetch(url,{headers:{'User-Agent':'SheltrDemo'}});
+  const js=await res.json();
+  if(!js.length) throw new Error('Location not found');
+  const ll={lat:+js[0].lat,lng:+js[0].lon};
+  geocodeCache.set(str,ll);
+  return ll;
+}
+
+    function isLatLon(text){
+      return /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(text);
+    }
+
+    async function plotRoute(){
+  const plotBtn=document.getElementById('plot-btn');
+  const overlay=document.getElementById('map-overlay');
+  const originalHtml=plotBtn.innerHTML;
+  plotBtn.disabled=true;
+  overlay.style.display='flex';
+  plotBtn.innerHTML='Plot <span class="spinner"></span>';
+  try{
+      const startInputEl=document.getElementById('start-input');
+  const destInputEl=document.getElementById('dest-input');
+  const s=startInputEl.value.trim();
+  const d=destInputEl.value.trim();
+      if(!s||!d){alert('Enter start and destination');return;}
+
+      let sLL,dLL;
+  try{
+    const sPromise = startInputEl.dataset.lat?Promise.resolve({lat:+startInputEl.dataset.lat,lng:+startInputEl.dataset.lng}): (isLatLon(s)?Promise.resolve({lat:+s.split(',')[0],lng:+s.split(',')[1]}):geocode(s));
+    const dPromise = destInputEl.dataset.lat?Promise.resolve({lat:+destInputEl.dataset.lat,lng:+destInputEl.dataset.lng}): (isLatLon(d)?Promise.resolve({lat:+d.split(',')[0],lng:+d.split(',')[1]}):geocode(d));
+    [sLL,dLL] = await Promise.all([sPromise,dPromise]);
+  }catch(e){alert(e.message);return;}
+      if(startMarker) startMarker.setMap(null);
+      if(destMarker) destMarker.setMap(null);
+      startMarker = new google.maps.Marker({position:sLL,map,icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:'green',fillOpacity:1,strokeWeight:0}});
+      destMarker = new google.maps.Marker({position:dLL,map,icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:'red',fillOpacity:1,strokeWeight:0}});
+      map.fitBounds(new google.maps.LatLngBounds(sLL,dLL));
+      await routeBetween();
+  } finally {
+    plotBtn.disabled=false;
+    plotBtn.innerHTML=originalHtml;
+    overlay.style.display='none';
+  }
+}
+
+    async function routeBetween(){
+      const url = `${apiBase}/routes?start=${startMarker.getPosition().lat()},${startMarker.getPosition().lng()}&end=${destMarker.getPosition().lat()},${destMarker.getPosition().lng()}&k=3`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.routes){
+        routePolylines.forEach(p=>p.setMap(null));
+        routePolylines=[];
+        data.routes.forEach((r,i)=>{
+          const path = r.path.map(pt=>({lat:pt[0],lng:pt[1]}));
+          const routePalette = ['#0046BE','#4C8FE0','#9CC0F1'];
+          const color = routePalette[i] || '#bdbdbd';
+          const opacity = i===0?1.0:0.5;
+          const poly = new google.maps.Polyline({path,strokeColor:color,strokeOpacity:opacity,strokeWeight:6,geodesic:true,icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:1,scale:4},offset:'0',repeat:'20px'}],map});
+          if(!routeInfoWindow) routeInfoWindow = new google.maps.InfoWindow();
+          poly.addListener('mouseover', (evt) => {
+            const html=`<div style='padding:4px 8px;font-family:Poppins,sans-serif;font-weight:600;color:#fff;background:rgba(0,0,0,0.8);border-radius:6px'>Risk: ${(r.total_risk ?? r.risk ?? 0).toFixed(2)}</div>`;
+            routeInfoWindow.setContent(html);
+            routeInfoWindow.setPosition(evt.latLng);
+            routeInfoWindow.open(map);
+          // keep infowindow following cursor
+          poly.addListener('mousemove', evt=>{
+            if(routeInfoWindow.getMap()) routeInfoWindow.setPosition(evt.latLng);
+          });
+          });
+          poly.addListener('mouseout', () => routeInfoWindow.close());
+          routePolylines.push(poly);
+        });
+        map.fitBounds(routePolylines[0].getBounds());
+      }else{
+        alert('Routing error: '+(data.error||'unknown'));
+      }
+    }
+
+    async function loadRiskLayer(){
+      try{
+        const geo = await (await fetch(`${apiBase}/riskmap`)).json();
+        map.data.addGeoJson(geo);
+        map.data.setStyle(f=>({strokeColor:'orange',strokeWeight:1,strokeOpacity:f.getProperty('risk_score')||0.6}));
+      }catch(e){console.error('Risk layer error',e);}
+    }
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places&callback=initMap"></script>
+</body>
+</html>
