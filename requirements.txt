@@ -7,3 +7,4 @@ shapely==2.0.4
 osmnx==1.9.1
 scikit-learn==1.4.2
 python-dotenv==1.0.1
+gunicorn>=20.1
