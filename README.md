@@ -15,6 +15,14 @@ Sheltr is a Python 3.11+ reference project that computes *safest* routes during 
 
 ---
 
+## Live Demo 🚀
+
+Try Sheltr without installing anything:
+
+[https://sheltr.up.railway.app](https://sheltr.up.railway.app)
+
+---
+
 ## Quickstart
 
 ```bash
@@ -80,6 +88,18 @@ No extra build step—just run the API (see Setup) and open `http://localhost:80
 
 ---
 
+## Route Comparison
+
+Below is an example of how Sheltr’s risk-aware routing differs from the standard shortest-time route returned by Google Maps for the **same start and destination**.
+
+| Google Maps | Sheltr (safest) |
+|-------------|-----------------|
+| ![Google Maps route](maps.png) | ![Sheltr safest route](sheltr.png) |
+
+Sheltr deliberately detours around high-risk flood zones (red polygons in the UI), resulting in a slightly longer path that stays on safer, higher-ground roads.
+
+---
+
 
 
 
@@ -88,7 +108,7 @@ No extra build step—just run the API (see Setup) and open `http://localhost:80
 
 ```bash
 # 1. Clone & enter project
- git clone https://github.com/<your-username>/sheltr.git && cd sheltr
+ git clone https://github.com/kswayam47/sheltr.git && cd sheltr
 
 # 2. Create virtual environment (Python 3.11+ recommended)
  python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
