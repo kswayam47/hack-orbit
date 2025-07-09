@@ -94,7 +94,7 @@ Below is an example of how Sheltr’s risk-aware routing differs from the standa
 
 | Google Maps | Sheltr (safest) |
 |-------------|-----------------|
-| ![Google Maps route](maps.png) | ![Sheltr safest route](sheltr.png) |
+| ![Google Maps route](assets/maps.png) | ![Sheltr safest route](assets/sheltr.png) |
 
 Sheltr deliberately detours around high-risk flood zones (red polygons in the UI), resulting in a slightly longer path that stays on safer, higher-ground roads.
 
